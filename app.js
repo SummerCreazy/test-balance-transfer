@@ -39,6 +39,7 @@ var install = require('./app/install-chaincode.js');
 var instantiate = require('./app/instantiate-chaincode.js');
 var invoke = require('./app/invoke-transaction.js');
 var query = require('./app/query.js');
+var system = require('./app/system.js');
 var host = process.env.HOST || hfc.getConfigSetting('host');
 var port = process.env.PORT || hfc.getConfigSetting('port');
 ///////////////////////////////////////////////////////////////////////////////
@@ -456,7 +457,7 @@ app.post('/channel/blocks/byHash', async function(req, res) {
 	res.send(message);
 });
 //Query for Channel Information
-app.post('/channel/infomation', async function(req, res) {
+app.post('/channel/information', async function(req, res) {
 	logger.debug('================ GET CHANNEL INFORMATION ======================');
 	logger.debug('channelName : ' + req.body.channelName);
 	let channelName = req.body.channelName;
@@ -486,4 +487,29 @@ app.post('/channel/peerHadJoin', async function(req, res) {
 
 	let message = await query.getChannels(peer, req.username, req.orgname);
 	res.json(message);
+});
+// Query to peers for org
+app.post('/client/getPeers', async function(req, res) {
+    logger.debug('================ GET CHANNELS ======================');
+    logger.debug('peer: ' + req.query.peer);
+    var peer = req.body.peer;
+    if (!peer) {
+        res.json(getErrorMessage('\'peer\''));
+        return;
+    }
+    let message = await query.getPeers(peer, req.username, req.orgname);
+    res.json(message);
+});
+// get fabric net config
+app.post('/client/getNetConfig', async function(req, res) {
+    logger.debug('================ GET NET CONFIG SETTING ======================');
+    let message = await query.getNetConfigSetting();
+    res.json(message);
+});
+
+// get fabric net config
+app.post('/sys/getSystemMessage', async function(req, res) {
+    logger.debug('================ GET system message ======================');
+    let message = await system.getSystemMessage();
+    res.json(message);
 });

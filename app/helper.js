@@ -24,6 +24,18 @@ var re = require('./response.js')
 var hfc = require('fabric-client');
 hfc.setLogger(logger);
 
+async function getNetConfigSetting() {
+    let config = '-connection-profile-path';
+
+    // build a client context and load it with a connection profile
+    // lets only load the network settings and save the client for later
+    let client = hfc.loadFromConfig(hfc.getConfigSetting('network'+config));
+    if(!client || !client._network_config){
+    	logger.debug('net config is null')
+	}
+    return client._network_config;
+}
+
 async function getClientForOrg (userorg, username) {
 	logger.debug('getClientForOrg - ****** START %s %s', userorg, username)
 	// get a fabric client loaded with a connection profile for this org
@@ -32,7 +44,7 @@ async function getClientForOrg (userorg, username) {
 	// build a client context and load it with a connection profile
 	// lets only load the network settings and save the client for later
 	let client = hfc.loadFromConfig(hfc.getConfigSetting('network'+config));
-
+	logger.debug('config:', client);
 	// This will load a connection profile over the top of the current one one
 	// since the first one did not have a client section and the following one does
 	// nothing will actually be replaced.
@@ -134,6 +146,7 @@ var getLogger = function(moduleName) {
 	return logger;
 };
 
+exports.getNetConfigSetting = getNetConfigSetting;
 exports.getClientForOrg = getClientForOrg;
 exports.getLogger = getLogger;
 exports.setupChaincodeDeploy = setupChaincodeDeploy;

@@ -233,6 +233,42 @@ var getChannels = async function(peer, username, org_name) {
 	}
 };
 
+var getPeers = async function(peer, username, org_name) {
+	try{
+		var client = await helper.getClientForOrg(org_name, username)
+        logger.debug('Successfully got the fabric client for the organization "%s"', org_name);
+        let request = {
+            target: peer
+        };
+		let response = await client.queryPeers(request);
+        if (response) {
+            logger.debug(response);
+            return re.responseSuccess(response);
+        } else {
+            logger.error('response is null');
+            return re.responseFail('response is null');
+        }
+	} catch(error) {
+        return re.responseFail(error.toString());
+	}
+};
+
+var getNetConfigSetting = async function() {
+    try{
+        var netConfig = await helper.getNetConfigSetting();
+        logger.debug('Successfully got the fabric net config  "%s"', netConfig);
+        if (netConfig._network_config) {
+            logger.debug(netConfig._network_config);
+            return re.responseSuccess(netConfig._network_config);
+        } else {
+            logger.error('netConfig is null');
+            return re.responseFail('netConfig is null');
+        }
+    } catch(error) {
+        return re.responseFail(error.toString());
+    }
+};
+
 exports.queryChaincode = queryChaincode;
 exports.getBlockByNumber = getBlockByNumber;
 exports.getTransactionByID = getTransactionByID;
@@ -240,3 +276,5 @@ exports.getBlockByHash = getBlockByHash;
 exports.getChainInfo = getChainInfo;
 exports.getInstalledChaincodes = getInstalledChaincodes;
 exports.getChannels = getChannels;
+exports.getPeers = getPeers;
+exports.getNetConfigSetting = getNetConfigSetting;

@@ -18,137 +18,66 @@ var log4js = require('log4js');
 var logger = log4js.getLogger('Helper');
 logger.setLevel('DEBUG');
 
-var path = require('path');
-var util = require('util');
 var re = require('./response.js')
-var hfc = require('fabric-client');
-hfc.setLogger(logger);
+var os = require('os')
 
-async function getNetConfigSetting() {
-    let config = '-connection-profile-path';
-
-    // build a client context and load it with a connection profile
-    // lets only load the network settings and save the client for later
-    let client = hfc.loadFromConfig(hfc.getConfigSetting('network'+config));
-    if(!client || !client._network_config){
-    	logger.debug('net config is null')
-	}
-    return client._network_config;
-}
-
-async function getClientForOrg (userorg, username) {
-	logger.debug('getClientForOrg - ****** START %s %s', userorg, username)
-	// get a fabric client loaded with a connection profile for this org
-	let config = '-connection-profile-path';
-
-	// build a client context and load it with a connection profile
-	// lets only load the network settings and save the client for later
-	let client = hfc.loadFromConfig(hfc.getConfigSetting('network'+config));
-	logger.debug('config:', client);
-	// This will load a connection profile over the top of the current one one
-	// since the first one did not have a client section and the following one does
-	// nothing will actually be replaced.
-	// This will also set an admin identity because the organization defined in the
-	// client section has one defined
-	client.loadFromConfig(hfc.getConfigSetting(userorg+config));
-
-	// this will create both the state store and the crypto store based
-	// on the settings in the client section of the connection profile
-	await client.initCredentialStores();
-
-	// The getUserContext call tries to get the user from persistence.
-	// If the user has been saved to persistence then that means the user has
-	// been registered and enrolled. If the user is found in persistence
-	// the call will then assign the user to the client object.
-	if(username) {
-		let user = await client.getUserContext(username, true);
-		if(!user) {
-			throw new Error(util.format('User was not found :', username));
-		} else {
-			logger.debug('User %s was found to be registered and enrolled', username);
-		}
-	}
-	logger.debug('getClientForOrg - ****** END %s %s \n\n', userorg, username)
-
-	return client;
-}
-var loginUser = async function(username, password, userOrg, isJson) {
+var getSystemMessage = async function () {
 	try {
-		var client = await getClientForOrg(userOrg);
-        logger.debug('Successfully initialized the credential stores');
-        var user = await client.getUserContext(username, true);
-        if (user && user.isEnrolled()) {
-            logger.info('Successfully loaded member from persistence');
-            user = await client.setUserContext({username: username, password: password});
-			var response = {
-				user: {
-					username: user._name,
-					orgName: userOrg
-				}
-			}
-			return re.responseSuccess(response);
-        } else {
-            throw new Error('User was not enrolled ');
+        let system = {
+            freeMem: 0, //内存剩余量
+            totalMem: 0, //内存总量
+            cpu: 0, //cpu使用率
+            arch: '', //cpu架构
+            sysName: '' //操作系统名称
         }
-	}catch(error) {
-        logger.error('Failed to get registered user: %s with error: %s', username, error.toString());
-        return re.responseFail('failed '+error.toString());
+        system.freeMem = os.freemem()
+        system.totalMem = os.totalmem()
+        system.arch = os.arch()
+        system.sysName = os.type()
+        cpuMetrics().then(res => {
+            system.cpu = res
+        })
+		logger.debug(system)
+		return re.responseSuccess(system)
+	}catch (error){
+		logger.debug(error)
+		return re.responseFail(error.toString())
+	}
+
+}
+// 获取当前的瞬时CPU时间
+const instantaneousCpuTime = () => {
+    let idleCpu = 0
+    let tickCpu = 0
+    const cpus = os.cpus()
+    const length = cpus.length
+    let i = 0
+    while (i < length) {
+        let cpu = cpus[i]
+        for (let type in cpu.times) {
+            tickCpu += cpu.times[type]
+        }
+        idleCpu += cpu.times.idle
+        i++
     }
+    const time = {
+        idle: idleCpu / cpus.length,
+        tick: tickCpu / cpus.length
+    }
+    return time
+}
+
+const cpuMetrics = () => {
+    const startQuantize = instantaneousCpuTime()
+    return new Promise((resolve, reject) => {
+        setTimeout(() => {
+            const endQuantize = instantaneousCpuTime()
+            const idleDifference = endQuantize.idle - startQuantize.idle
+            const tickDifference = endQuantize.tick - startQuantize.tick
+            resolve(1 - (idleDifference / tickDifference))
+        }, 1000)
+    })
 }
 
 
-var getRegisteredUser = async function(username, userOrg) {
-	try {
-		var client = await getClientForOrg(userOrg);
-		logger.debug('Successfully initialized the credential stores');
-			// client can now act as an agent for organization Org1
-			// first check to see if the user is already enrolled
-		var user = await client.getUserContext(username, true);
-		if (user && user.isEnrolled()) {
-			logger.info('Successfully loaded member from persistence');
-		} else {
-			// user was not enrolled, so we will need an admin user object to register
-			logger.info('User %s was not enrolled, so we will need an admin user object to register',username);
-			var admins = hfc.getConfigSetting('admins');
-			let adminUserObj = await client.setUserContext({username: admins[0].username, password: admins[0].secret});
-			let caClient = client.getCertificateAuthority();
-			let secret = await caClient.register({
-				enrollmentID: username,
-				affiliation: userOrg.toLowerCase() + '.department1'
-			}, adminUserObj);
-			logger.debug('secret', secret);
-			logger.debug('Successfully got the secret for user %s',username);
-			user = await client.setUserContext({username:username, password:secret});
-			user._enrollmentSecret = secret;
-			logger.debug('user secret', user);
-			logger.debug('Successfully enrolled username %s  and setUserContext on the client object', username);
-		}
-		if(user && user.isEnrolled) {
-			return re.responseSuccess(user._enrollmentSecret);
-		} else {
-			throw new Error('User was not enrolled ');
-		}
-	} catch(error) {
-		logger.error('Failed to get registered user: %s with error: %s', username, error.toString());
-		return re.responseFail('failed '+error.toString());
-	}
-
-};
-
-
-var setupChaincodeDeploy = function() {
-	process.env.GOPATH = path.join(__dirname, hfc.getConfigSetting('CC_SRC_PATH'));
-};
-
-var getLogger = function(moduleName) {
-	var logger = log4js.getLogger(moduleName);
-	logger.setLevel('DEBUG');
-	return logger;
-};
-
-exports.getNetConfigSetting = getNetConfigSetting;
-exports.getClientForOrg = getClientForOrg;
-exports.getLogger = getLogger;
-exports.setupChaincodeDeploy = setupChaincodeDeploy;
-exports.getRegisteredUser = getRegisteredUser;
-exports.loginUser = loginUser;
+exports.getSystemMessage = getSystemMessage
