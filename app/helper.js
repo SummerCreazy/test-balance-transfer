@@ -77,6 +77,10 @@ var loginUser = async function(username, password, userOrg, isJson) {
 		var client = await getClientForOrg(userOrg);
         logger.debug('Successfully initialized the credential stores');
         var user = await client.getUserContext(username, true);
+        if(user._enrollmentSecret !== password) {
+            logger.debug('password error!')
+            return re.responseFail('password error!');
+        }
         if (user && user.isEnrolled()) {
             logger.info('Successfully loaded member from persistence');
             user = await client.setUserContext({username: username, password: password});
@@ -98,40 +102,37 @@ var loginUser = async function(username, password, userOrg, isJson) {
 
 
 var getRegisteredUser = async function(username, userOrg) {
-	try {
-		var client = await getClientForOrg(userOrg);
-		logger.debug('Successfully initialized the credential stores');
-			// client can now act as an agent for organization Org1
-			// first check to see if the user is already enrolled
-		var user = await client.getUserContext(username, true);
-		if (user && user.isEnrolled()) {
-			logger.info('Successfully loaded member from persistence');
-		} else {
-			// user was not enrolled, so we will need an admin user object to register
-			logger.info('User %s was not enrolled, so we will need an admin user object to register',username);
-			var admins = hfc.getConfigSetting('admins');
-			let adminUserObj = await client.setUserContext({username: admins[0].username, password: admins[0].secret});
-			let caClient = client.getCertificateAuthority();
-			let secret = await caClient.register({
-				enrollmentID: username,
-				affiliation: userOrg.toLowerCase() + '.department1'
-			}, adminUserObj);
-			logger.debug('secret', secret);
-			logger.debug('Successfully got the secret for user %s',username);
-			user = await client.setUserContext({username:username, password:secret});
-			user._enrollmentSecret = secret;
-			logger.debug('user secret', user);
-			logger.debug('Successfully enrolled username %s  and setUserContext on the client object', username);
-		}
-		if(user && user.isEnrolled) {
-			return re.responseSuccess(user._enrollmentSecret);
-		} else {
-			throw new Error('User was not enrolled ');
-		}
-	} catch(error) {
-		logger.error('Failed to get registered user: %s with error: %s', username, error.toString());
-		return re.responseFail('failed '+error.toString());
-	}
+    try {
+        var client = await getClientForOrg(userOrg);
+        logger.debug('Successfully initialized the credential stores');
+        // client can now act as an agent for organization Org1
+        // first check to see if the user is already enrolled
+        var user = await client.getUserContext(username, true);
+        if (user && user.isEnrolled()) {
+            logger.info('Successfully loaded member from persistence');
+        } else {
+            // user was not enrolled, so we will need an admin user object to register
+            logger.info('User %s was not enrolled, so we will need an admin user object to register',username);
+            var admins = hfc.getConfigSetting('admins');
+            let adminUserObj = await client.setUserContext({username: admins[0].username, password: admins[0].secret});
+            let caClient = client.getCertificateAuthority();
+            let secret = await caClient.register({
+                enrollmentID: username,
+                affiliation: userOrg.toLowerCase() + '.department1'
+            }, adminUserObj);
+            logger.debug('Successfully got the secret for user %s',username);
+            user = await client.setUserContext({username:username, password:secret});
+            logger.debug('Successfully enrolled username %s  and setUserContext on the client object', user);
+        }
+        let data = {
+            username: user._name,
+            password: user._enrollmentSecret
+        }
+       return re.responseSuccess(data)
+    } catch(error) {
+        logger.error('Failed to get registered user: %s with error: %s', username, error.toString());
+        return re.responseFail(error.toString())
+    }
 
 };
 
